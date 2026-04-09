@@ -77,9 +77,19 @@ with col_left:
 with col_right:
     st.subheader("History")
     if not st.session_state.expenses.empty:
+        # Create a display copy to format the date
         display_df = st.session_state.expenses.copy()
+        # Force Date to string format DD/MM/YYYY
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
-        st.dataframe(display_df.sort_index(ascending=False), use_container_width=True)
+        
+        # Display with specific column configuration to keep the string format
+        st.dataframe(
+            display_df.sort_index(ascending=False), 
+            use_container_width=True,
+            column_config={
+                "Date": st.column_config.TextColumn("Date")
+            }
+        )
     else:
         st.write("No history available")
 
