@@ -10,7 +10,7 @@ st.set_page_config(
 
 # --- 2. DATA PERSISTENCE ---
 if 'expenses' not in st.session_state:
-    st.session_state.expenses = pd.DataFrame(columns=["Amount", "Category", "Date", "Note"])
+    st.session_state.expenses = pd.DataFrame(columns=["Amount", "Category", "Date"])
 
 # --- 3. SIDEBAR: ADD EXPENSE ---
 st.sidebar.header("Add New Expense")
@@ -18,11 +18,10 @@ with st.sidebar.form("expense_form", clear_on_submit=True):
     amount = st.number_input("Amount (INR)", min_value=0.0, step=100.0, format="%.2f")
     category = st.selectbox("Category", ["Food", "Travel", "Bills", "Entertainment", "Shopping", "Health", "Others"])
     date = st.date_input("Date", datetime.date.today())
-    note = st.text_input("Note/Description")
     submit = st.form_submit_button("Save Transaction")
 
 if submit and amount > 0:
-    new_entry = pd.DataFrame([[amount, category, date, note]], columns=st.session_state.expenses.columns)
+    new_entry = pd.DataFrame([[amount, category, date]], columns=st.session_state.expenses.columns)
     st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
     st.sidebar.success("Transaction Saved")
 
@@ -32,10 +31,7 @@ current_month = today.month
 current_year = today.year
 
 if not st.session_state.expenses.empty:
-    # Convert Date column to datetime objects
     st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
-    
-    # Filter for the current month and year
     monthly_mask = (pd.to_datetime(st.session_state.expenses['Date']).dt.month == current_month) & \
                    (pd.to_datetime(st.session_state.expenses['Date']).dt.year == current_year)
     monthly_df = st.session_state.expenses[monthly_mask]
@@ -49,7 +45,6 @@ st.sidebar.divider()
 st.sidebar.header(f"Budget: {today.strftime('%B %Y')}")
 budget_limit = st.sidebar.number_input("Monthly Limit (INR)", min_value=1000.0, value=20000.0)
 
-# Progress Bar Logic
 progress = min(monthly_total / budget_limit, 1.0)
 st.sidebar.progress(progress)
 st.sidebar.write(f"Spent: INR {monthly_total:,.2f} / INR {budget_limit:,.2f}")
@@ -62,7 +57,6 @@ else:
 # --- 6. MAIN DASHBOARD ---
 st.title(f"Expense Dashboard: {today.strftime('%B %Y')}")
 
-# Metrics
 m1, m2, m3 = st.columns(3)
 with m1:
     st.metric("Monthly Spending", f"INR {monthly_total:,.2f}")
@@ -89,9 +83,10 @@ with col_left:
         st.info("No expenses recorded this month")
 
 with col_right:
-    st.subheader("Recent Activity (DD/MM/YYYY)")
+    st.subheader("Recent Activity")
     if not monthly_df.empty:
         display_df = monthly_df.copy()
+        # Fixed Date Format to DD/MM/YYYY
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
         st.dataframe(
             display_df.sort_index(ascending=False), 
@@ -101,10 +96,31 @@ with col_right:
     else:
         st.write("No transactions for this month")
 
-# --- 8. SMART INSIGHTS ---
+# --- 8. SMART INSIGHTS & TIPS ---
 st.divider()
-st.subheader("Smart Insights")
+st.subheader("Smart Financial Tips")
+
 if not monthly_df.empty:
-    st.success(f"Based on your current pace, you have spent INR {monthly_total:,.2f} in {today.strftime('%B')}.")
+    cat_totals = monthly_df.groupby("Category")["Amount"].sum()
+    highest_cat = cat_totals.idxmax()
+    
+    col_tip1, col_tip2 = st.columns(2)
+    
+    with col_tip1:
+        st.write(f"**Highest Expense:** {highest_cat}")
+        if highest_cat == "Food":
+            st.info("Tip: You're spending a lot on food. Try reducing restaurant visits to save 15% this month.")
+        elif highest_cat == "Travel":
+            st.info("Tip: Consider fuel-sharing or public transport to lower travel costs.")
+        elif highest_cat == "Shopping":
+            st.info("Tip: Wait 24 hours before making a purchase to avoid impulse buying.")
+        else:
+            st.info("Tip: Review your small recurring daily costs; they add up fast!")
+
+    with col_tip2:
+        if monthly_total > budget_limit:
+            st.error("Action Plan: You are over budget. Focus only on 'Needs' for the rest of the month.")
+        else:
+            st.success("Good News: You are tracking well! Try to save the remaining budget amount.")
 else:
-    st.info("Insights will appear once you add your first transaction of the month.")
+    st.write("Add some transactions to see your personalized tips.")
