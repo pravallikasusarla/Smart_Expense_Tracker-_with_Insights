@@ -13,7 +13,7 @@ if 'expenses' not in st.session_state:
 # Sidebar: Add Expense
 st.sidebar.header("Add New Expense")
 with st.sidebar.form("expense_form", clear_on_submit=True):
-    amount = st.number_input("Amount ($)", min_value=0.0, step=0.01)
+    amount = st.number_input("Amount (₹)", min_value=0.0, step=1.0, format="%.2f")
     category = st.selectbox("Category", ["Food", "Travel", "Bills", "Entertainment", "Shopping", "Others"])
     date = st.date_input("Date", datetime.date.today())
     note = st.text_input("Note")
@@ -26,7 +26,7 @@ if submit and amount > 0:
 
 # Dashboard
 total_spent = st.session_state.expenses['Amount'].sum()
-st.metric("Total Spending", f"${total_spent:,.2f}")
+st.metric("Total Spending", f"₹{total_spent:,.2f}")
 
 if not st.session_state.expenses.empty:
     st.dataframe(st.session_state.expenses, use_container_width=True)
