@@ -4,7 +4,7 @@ import datetime
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Smart Expense Tracker",
+    page_title="Monthly Expense Tracker",
     layout="wide"
 )
 
@@ -12,12 +12,12 @@ st.set_page_config(
 if 'expenses' not in st.session_state:
     st.session_state.expenses = pd.DataFrame(columns=["Amount", "Category", "Date", "Note"])
 
-# --- 3. SIDEBAR: INPUT ---
+# --- 3. SIDEBAR: ADD EXPENSE ---
 st.sidebar.header("Add New Expense")
 with st.sidebar.form("expense_form", clear_on_submit=True):
     amount = st.number_input("Amount (INR)", min_value=0.0, step=100.0, format="%.2f")
     category = st.selectbox("Category", ["Food", "Travel", "Bills", "Entertainment", "Shopping", "Health", "Others"])
-    date = st.date_input("Transaction Date", datetime.date.today())
+    date = st.date_input("Date", datetime.date.today())
     note = st.text_input("Note/Description")
     submit = st.form_submit_button("Save Transaction")
 
@@ -26,78 +26,85 @@ if submit and amount > 0:
     st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
     st.sidebar.success("Transaction Saved")
 
-# --- 4. SIDEBAR: START AND END DATE FILTERS ---
-st.sidebar.divider()
-st.sidebar.header("Filter by Date Range")
+# --- 4. MONTHLY CALCULATION LOGIC ---
+today = datetime.date.today()
+current_month = today.month
+current_year = today.year
 
-col_s, col_e = st.sidebar.columns(2)
-with col_s:
-    start_date = st.date_input("Start Date", datetime.date.today().replace(day=1))
-with col_e:
-    end_date = st.date_input("End Date", datetime.date.today())
-
-# --- 5. FILTERING LOGIC ---
 if not st.session_state.expenses.empty:
-    # Ensure Date column is in date format for comparison
+    # Convert Date column to datetime objects
     st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
     
-    # Apply the mask for start and end date
-    mask = (st.session_state.expenses['Date'] >= start_date) & (st.session_state.expenses['Date'] <= end_date)
-    filtered_df = st.session_state.expenses[mask]
+    # Filter for the current month and year
+    monthly_mask = (pd.to_datetime(st.session_state.expenses['Date']).dt.month == current_month) & \
+                   (pd.to_datetime(st.session_state.expenses['Date']).dt.year == current_year)
+    monthly_df = st.session_state.expenses[monthly_mask]
 else:
-    filtered_df = st.session_state.expenses
+    monthly_df = st.session_state.expenses
 
-# Calculations
-filtered_total = filtered_df['Amount'].sum()
+monthly_total = monthly_df['Amount'].sum()
+
+# --- 5. SIDEBAR: MONTHLY BUDGET ---
+st.sidebar.divider()
+st.sidebar.header(f"Budget: {today.strftime('%B %Y')}")
+budget_limit = st.sidebar.number_input("Monthly Limit (INR)", min_value=1000.0, value=20000.0)
+
+# Progress Bar Logic
+progress = min(monthly_total / budget_limit, 1.0)
+st.sidebar.progress(progress)
+st.sidebar.write(f"Spent: INR {monthly_total:,.2f} / INR {budget_limit:,.2f}")
+
+if monthly_total > budget_limit:
+    st.sidebar.error("Warning: Budget Exceeded")
+else:
+    st.sidebar.info(f"Remaining: INR {budget_limit - monthly_total:,.2f}")
 
 # --- 6. MAIN DASHBOARD ---
-st.title("Smart Expense Tracker")
-st.write(f"Showing data from **{start_date.strftime('%d/%m/%Y')}** to **{end_date.strftime('%d/%m/%Y')}**")
+st.title(f"Expense Dashboard: {today.strftime('%B %Y')}")
 
-# Metrics Row
+# Metrics
 m1, m2, m3 = st.columns(3)
 with m1:
-    st.metric("Total Spending", f"INR {filtered_total:,.2f}")
+    st.metric("Monthly Spending", f"INR {monthly_total:,.2f}")
 with m2:
-    if not filtered_df.empty:
-        top_cat = filtered_df.groupby("Category")["Amount"].sum().idxmax()
+    if not monthly_df.empty:
+        top_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
         st.metric("Top Category", top_cat)
     else:
         st.metric("Top Category", "N/A")
 with m3:
-    st.metric("Transactions", len(filtered_df))
+    st.metric("Monthly Transactions", len(monthly_df))
 
 st.divider()
 
-# --- 7. VISUALIZATION & HISTORY ---
+# --- 7. VISUALS & HISTORY ---
 col_left, col_right = st.columns([3, 2])
 
 with col_left:
-    st.subheader("Spending Analysis")
-    if not filtered_df.empty:
-        cat_data = filtered_df.groupby("Category")["Amount"].sum()
+    st.subheader("Monthly Analysis")
+    if not monthly_df.empty:
+        cat_data = monthly_df.groupby("Category")["Amount"].sum()
         st.bar_chart(cat_data)
     else:
-        st.info("No data found for this period")
+        st.info("No expenses recorded this month")
 
 with col_right:
-    st.subheader("Transaction History")
-    if not filtered_df.empty:
-        display_df = filtered_df.copy()
-        # Format the date column to DD/MM/YYYY
+    st.subheader("Recent Activity (DD/MM/YYYY)")
+    if not monthly_df.empty:
+        display_df = monthly_df.copy()
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
         st.dataframe(
-            display_df.sort_values(by="Date", ascending=False), 
+            display_df.sort_index(ascending=False), 
             use_container_width=True,
             column_config={"Date": st.column_config.TextColumn("Date")}
         )
     else:
-        st.write("No transactions found")
+        st.write("No transactions for this month")
 
 # --- 8. SMART INSIGHTS ---
 st.divider()
 st.subheader("Smart Insights")
-if not filtered_df.empty:
-    st.success(f"Insight: You spent INR {filtered_total:,.2f} during this selected timeframe.")
+if not monthly_df.empty:
+    st.success(f"Based on your current pace, you have spent INR {monthly_total:,.2f} in {today.strftime('%B')}.")
 else:
-    st.info("Adjust the start and end dates to view your spending insights.")
+    st.info("Insights will appear once you add your first transaction of the month.")
