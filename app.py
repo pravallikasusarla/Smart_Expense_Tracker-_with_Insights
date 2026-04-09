@@ -26,110 +26,88 @@ if submit and amount > 0:
     st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
     st.sidebar.success("Transaction Saved")
 
-# Sidebar Budget Feature
+# --- 4. MONTHLY CALCULATION LOGIC ---
+today = datetime.date.today()
+current_month = today.month
+current_year = today.year
+
+# Convert Date column to datetime objects for filtering
+if not st.session_state.expenses.empty:
+    st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
+
+# Filter data for the current month only
+monthly_df = st.session_state.expenses[
+    (pd.to_datetime(st.session_state.expenses['Date']).dt.month == current_month) & 
+    (pd.to_datetime(st.session_state.expenses['Date']).dt.year == current_year)
+]
+
+monthly_total = monthly_df['Amount'].sum()
+total_all_time = st.session_state.expenses['Amount'].sum()
+
+# Sidebar Budget Feature (Now tracks Monthly Spend)
 st.sidebar.divider()
-st.sidebar.header("Monthly Budget Goal")
-budget_limit = st.sidebar.number_input("Set Budget (INR)", min_value=1000.0, value=50000.0, step=1000.0)
+st.sidebar.header(f"Budget for {today.strftime('%B %Y')}")
+budget_limit = st.sidebar.number_input("Set Monthly Budget (INR)", min_value=1000.0, value=50000.0, step=1000.0)
 
-total_spent = st.session_state.expenses['Amount'].sum()
-progress = min(total_spent / budget_limit, 1.0)
-
-st.sidebar.write(f"Total Spent: INR {total_spent:,.2f}")
+progress = min(monthly_total / budget_limit, 1.0)
+st.sidebar.write(f"Monthly Spend: INR {monthly_total:,.2f}")
 st.sidebar.progress(progress)
 
-if total_spent > budget_limit:
-    st.sidebar.error(f"Over Budget by INR {total_spent - budget_limit:,.2f}")
-elif total_spent > budget_limit * 0.8:
-    st.sidebar.warning("80% of budget used")
+if monthly_total > budget_limit:
+    st.sidebar.error(f"Over Budget by INR {monthly_total - budget_limit:,.2f}")
 else:
-    st.sidebar.info(f"INR {budget_limit - total_spent:,.2f} remaining")
+    st.sidebar.info(f"INR {budget_limit - monthly_total:,.2f} remaining for this month")
 
-# --- 4. MAIN DASHBOARD ---
+# --- 5. MAIN DASHBOARD ---
 st.title("Smart Expense Tracker")
-st.markdown("Monitor your spending habits and get financial tips")
+st.subheader(f"Dashboard for {today.strftime('%B %Y')}")
 
 # Top Metrics Row
 m1, m2, m3 = st.columns(3)
 with m1:
-    st.metric("Total Expenses", f"INR {total_spent:,.2f}")
+    st.metric("This Month Total", f"INR {monthly_total:,.2f}")
 with m2:
-    if not st.session_state.expenses.empty:
-        top_cat = st.session_state.expenses.groupby("Category")["Amount"].sum().idxmax()
-        st.metric("Top Category", top_cat)
+    if not monthly_df.empty:
+        top_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
+        st.metric("Monthly Top Category", top_cat)
     else:
-        st.metric("Top Category", "N/A")
+        st.metric("Monthly Top Category", "N/A")
 with m3:
-    st.metric("Total Transactions", len(st.session_state.expenses))
+    st.metric("All-Time Total", f"INR {total_all_time:,.2f}")
 
 st.divider()
 
-# --- 5. VISUALIZATION & HISTORY ---
+# --- 6. VISUALIZATION & HISTORY ---
 col_left, col_right = st.columns([3, 2])
 
 with col_left:
-    st.subheader("Spending Breakdown")
-    if not st.session_state.expenses.empty:
-        cat_data = st.session_state.expenses.groupby("Category")["Amount"].sum()
+    st.subheader("Monthly Spending Breakdown")
+    if not monthly_df.empty:
+        cat_data = monthly_df.groupby("Category")["Amount"].sum()
         st.bar_chart(cat_data)
     else:
-        st.info("Add data to see the chart")
+        st.info("No data for this month yet")
 
 with col_right:
-    st.subheader("History")
+    st.subheader("History (Latest First)")
     if not st.session_state.expenses.empty:
-        # Create a display copy to format the date
         display_df = st.session_state.expenses.copy()
-        # Force Date to string format DD/MM/YYYY
+        # Format date for UI
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
-        
-        # Display with specific column configuration to keep the string format
         st.dataframe(
-            display_df.sort_index(ascending=False), 
+            display_df.iloc[::-1], # Reverse to show latest first
             use_container_width=True,
-            column_config={
-                "Date": st.column_config.TextColumn("Date")
-            }
+            column_config={"Date": st.column_config.TextColumn("Date")}
         )
     else:
         st.write("No history available")
 
-# --- 6. SMART INSIGHTS ENGINE ---
+# --- 7. SMART INSIGHTS ---
 st.divider()
-st.subheader("Smart Insights")
+st.subheader("Monthly Insights")
 
-if not st.session_state.expenses.empty:
-    insight_col1, insight_col2 = st.columns(2)
-    cat_totals = st.session_state.expenses.groupby("Category")["Amount"].sum()
-    highest_cat = cat_totals.idxmax()
-    
-    with insight_col1:
-        st.write(f"Analysis: You have spent the most on {highest_cat}")
-        if highest_cat == "Food":
-            st.info("Tip: Ordering in often adds delivery fees. Try cooking at home to save money")
-        elif highest_cat == "Shopping":
-            st.info("Tip: Use the 30-Day Rule. Wait before buying non-essentials to avoid impulse spending")
-        elif highest_cat == "Bills":
-            st.info("Tip: Check for recurring subscriptions you do not use anymore")
-        elif highest_cat == "Travel":
-            st.info("Tip: Consider using public transport to reduce fuel costs")
-        else:
-            st.info("Tip: Track your small daily costs as they add up over time")
-
-    with insight_col2:
-        if total_spent > budget_limit:
-            st.error("Action Required: Your spending has crossed your target. Limit non-essential spending")
-        else:
-            st.success("Status: You are currently within your budget. Keep it up")
+if not monthly_df.empty:
+    highest_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
+    st.info(f"Analysis: You have spent the most on {highest_cat} this month. Keep an eye on this to stay within your INR {budget_limit:,.2f} limit.")
 else:
-    st.write("Add transactions to generate financial advice")
-
-# --- 7. EXPORT FEATURE ---
-st.divider()
-if not st.session_state.expenses.empty:
-    csv = st.session_state.expenses.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Expense Report (CSV)",
-        data=csv,
-        file_name=f'Expense_Report_{datetime.date.today().strftime("%d_%m_%Y")}.csv',
-        mime='text/csv',
-    )
+    st.write("Add transactions to generate monthly insights")
