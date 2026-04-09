@@ -20,10 +20,19 @@ with st.sidebar.form("expense_form", clear_on_submit=True):
     date = st.date_input("Date", datetime.date.today())
     submit = st.form_submit_button("Save Transaction")
 
-if submit and amount > 0:
-    new_entry = pd.DataFrame([[amount, category, date]], columns=st.session_state.expenses.columns)
-    st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
-    st.sidebar.success("Transaction Saved")
+if submit:
+    if amount <= 0:
+        st.sidebar.error("Please enter an amount greater than 0.")
+    elif date > datetime.date.today():
+        # --- FUTURE DATE ERROR CHECK ---
+        st.sidebar.error("Error: Future dates are not allowed!")
+    else:
+        # Create new entry carefully to avoid ValueError
+        new_data = {"Amount": [amount], "Category": [category], "Date": [date]}
+        new_entry = pd.DataFrame(new_data)
+        
+        st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
+        st.sidebar.success("Transaction Saved Successfully!")
 
 # --- 4. MONTHLY CALCULATION LOGIC ---
 today = datetime.date.today()
@@ -31,6 +40,7 @@ current_month = today.month
 current_year = today.year
 
 if not st.session_state.expenses.empty:
+    # Ensure Date column is in datetime format
     st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
     monthly_mask = (pd.to_datetime(st.session_state.expenses['Date']).dt.month == current_month) & \
                    (pd.to_datetime(st.session_state.expenses['Date']).dt.year == current_year)
@@ -48,11 +58,6 @@ budget_limit = st.sidebar.number_input("Monthly Limit (INR)", min_value=1000.0, 
 progress = min(monthly_total / budget_limit, 1.0)
 st.sidebar.progress(progress)
 st.sidebar.write(f"Spent: INR {monthly_total:,.2f} / INR {budget_limit:,.2f}")
-
-if monthly_total > budget_limit:
-    st.sidebar.error("Warning: Budget Exceeded")
-else:
-    st.sidebar.info(f"Remaining: INR {budget_limit - monthly_total:,.2f}")
 
 # --- 6. MAIN DASHBOARD ---
 st.title(f"Expense Dashboard: {today.strftime('%B %Y')}")
@@ -86,7 +91,6 @@ with col_right:
     st.subheader("Recent Activity")
     if not monthly_df.empty:
         display_df = monthly_df.copy()
-        # Fixed Date Format to DD/MM/YYYY
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
         st.dataframe(
             display_df.sort_index(ascending=False), 
@@ -96,31 +100,11 @@ with col_right:
     else:
         st.write("No transactions for this month")
 
-# --- 8. SMART INSIGHTS & TIPS ---
+# --- 8. SMART TIPS ---
 st.divider()
 st.subheader("Smart Financial Tips")
-
 if not monthly_df.empty:
-    cat_totals = monthly_df.groupby("Category")["Amount"].sum()
-    highest_cat = cat_totals.idxmax()
-    
-    col_tip1, col_tip2 = st.columns(2)
-    
-    with col_tip1:
-        st.write(f"**Highest Expense:** {highest_cat}")
-        if highest_cat == "Food":
-            st.info("Tip: You're spending a lot on food. Try reducing restaurant visits to save 15% this month.")
-        elif highest_cat == "Travel":
-            st.info("Tip: Consider fuel-sharing or public transport to lower travel costs.")
-        elif highest_cat == "Shopping":
-            st.info("Tip: Wait 24 hours before making a purchase to avoid impulse buying.")
-        else:
-            st.info("Tip: Review your small recurring daily costs; they add up fast!")
-
-    with col_tip2:
-        if monthly_total > budget_limit:
-            st.error("Action Plan: You are over budget. Focus only on 'Needs' for the rest of the month.")
-        else:
-            st.success("Good News: You are tracking well! Try to save the remaining budget amount.")
+    highest_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
+    st.info(f"Tip: You are spending the most on **{highest_cat}**. Try to keep an eye on this to save more this month!")
 else:
-    st.write("Add some transactions to see your personalized tips.")
+    st.write("Add transactions to see your personalized tips.")
