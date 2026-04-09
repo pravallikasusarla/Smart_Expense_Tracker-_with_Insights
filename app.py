@@ -76,7 +76,12 @@ with col_left:
 
 with col_right:
     st.subheader("History")
-    st.dataframe(st.session_state.expenses.sort_values(by="Date", ascending=False), use_container_width=True)
+    if not st.session_state.expenses.empty:
+        display_df = st.session_state.expenses.copy()
+        display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
+        st.dataframe(display_df.sort_index(ascending=False), use_container_width=True)
+    else:
+        st.write("No history available")
 
 # --- 6. SMART INSIGHTS ENGINE ---
 st.divider()
@@ -115,6 +120,6 @@ if not st.session_state.expenses.empty:
     st.download_button(
         label="Download Expense Report (CSV)",
         data=csv,
-        file_name=f'Expense_Report_{datetime.date.today()}.csv',
+        file_name=f'Expense_Report_{datetime.date.today().strftime("%d_%m_%Y")}.csv',
         mime='text/csv',
     )
