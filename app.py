@@ -12,13 +12,13 @@ st.set_page_config(
 if 'expenses' not in st.session_state:
     st.session_state.expenses = pd.DataFrame(columns=["Amount", "Category", "Date", "Note"])
 
-# --- 3. SIDEBAR: INPUT & BUDGET ---
+# --- 3. SIDEBAR: INPUT ---
 st.sidebar.header("Add New Expense")
 with st.sidebar.form("expense_form", clear_on_submit=True):
     amount = st.number_input("Amount (INR)", min_value=0.0, step=100.0, format="%.2f")
     category = st.selectbox("Category", ["Food", "Travel", "Bills", "Entertainment", "Shopping", "Health", "Others"])
     date = st.date_input("Date", datetime.date.today())
-    note = st.text_input("Note/Description", placeholder="e.g., Dinner")
+    note = st.text_input("Note/Description")
     submit = st.form_submit_button("Save Transaction")
 
 if submit and amount > 0:
@@ -26,88 +26,83 @@ if submit and amount > 0:
     st.session_state.expenses = pd.concat([st.session_state.expenses, new_entry], ignore_index=True)
     st.sidebar.success("Transaction Saved")
 
-# --- 4. MONTHLY CALCULATION LOGIC ---
-today = datetime.date.today()
-current_month = today.month
-current_year = today.year
-
-# Convert Date column to datetime objects for filtering
-if not st.session_state.expenses.empty:
-    st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
-
-# Filter data for the current month only
-monthly_df = st.session_state.expenses[
-    (pd.to_datetime(st.session_state.expenses['Date']).dt.month == current_month) & 
-    (pd.to_datetime(st.session_state.expenses['Date']).dt.year == current_year)
-]
-
-monthly_total = monthly_df['Amount'].sum()
-total_all_time = st.session_state.expenses['Amount'].sum()
-
-# Sidebar Budget Feature (Now tracks Monthly Spend)
+# --- 4. SIDEBAR: DATE RANGE FILTER ---
 st.sidebar.divider()
-st.sidebar.header(f"Budget for {today.strftime('%B %Y')}")
-budget_limit = st.sidebar.number_input("Set Monthly Budget (INR)", min_value=1000.0, value=50000.0, step=1000.0)
+st.sidebar.header("Filter by Date Range")
 
-progress = min(monthly_total / budget_limit, 1.0)
-st.sidebar.write(f"Monthly Spend: INR {monthly_total:,.2f}")
-st.sidebar.progress(progress)
+# This creates the "From" and "To" selection in one box
+today = datetime.date.today()
+start_of_month = today.replace(day=1)
 
-if monthly_total > budget_limit:
-    st.sidebar.error(f"Over Budget by INR {monthly_total - budget_limit:,.2f}")
+date_range = st.sidebar.date_input(
+    "Select Range",
+    value=(start_of_month, today),
+    max_value=today
+)
+
+# --- 5. FILTERING LOGIC ---
+if not st.session_state.expenses.empty:
+    # Ensure Date column is datetime objects
+    st.session_state.expenses['Date'] = pd.to_datetime(st.session_state.expenses['Date']).dt.date
+    
+    # Check if user selected both start and end dates
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+        mask = (st.session_state.expenses['Date'] >= start_date) & (st.session_state.expenses['Date'] <= end_date)
+        filtered_df = st.session_state.expenses[mask]
+    else:
+        filtered_df = st.session_state.expenses
 else:
-    st.sidebar.info(f"INR {budget_limit - monthly_total:,.2f} remaining for this month")
+    filtered_df = st.session_state.expenses
 
-# --- 5. MAIN DASHBOARD ---
+# Calculations based on Filtered Data
+filtered_total = filtered_df['Amount'].sum()
+
+# --- 6. MAIN DASHBOARD ---
 st.title("Smart Expense Tracker")
-st.subheader(f"Dashboard for {today.strftime('%B %Y')}")
 
-# Top Metrics Row
+# Metrics Row
 m1, m2, m3 = st.columns(3)
 with m1:
-    st.metric("This Month Total", f"INR {monthly_total:,.2f}")
+    st.metric("Total in Selected Range", f"INR {filtered_total:,.2f}")
 with m2:
-    if not monthly_df.empty:
-        top_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
-        st.metric("Monthly Top Category", top_cat)
+    if not filtered_df.empty:
+        top_cat = filtered_df.groupby("Category")["Amount"].sum().idxmax()
+        st.metric("Top Category (Filtered)", top_cat)
     else:
-        st.metric("Monthly Top Category", "N/A")
+        st.metric("Top Category (Filtered)", "N/A")
 with m3:
-    st.metric("All-Time Total", f"INR {total_all_time:,.2f}")
+    st.metric("Transactions Found", len(filtered_df))
 
 st.divider()
 
-# --- 6. VISUALIZATION & HISTORY ---
+# --- 7. VISUALIZATION & HISTORY ---
 col_left, col_right = st.columns([3, 2])
 
 with col_left:
-    st.subheader("Monthly Spending Breakdown")
-    if not monthly_df.empty:
-        cat_data = monthly_df.groupby("Category")["Amount"].sum()
+    st.subheader("Spending Breakdown (Selected Range)")
+    if not filtered_df.empty:
+        cat_data = filtered_df.groupby("Category")["Amount"].sum()
         st.bar_chart(cat_data)
     else:
-        st.info("No data for this month yet")
+        st.info("No data found for this date range")
 
 with col_right:
-    st.subheader("History (Latest First)")
-    if not st.session_state.expenses.empty:
-        display_df = st.session_state.expenses.copy()
-        # Format date for UI
+    st.subheader("History (DD/MM/YYYY)")
+    if not filtered_df.empty:
+        display_df = filtered_df.copy()
+        # Formatting Date to DD/MM/YYYY
         display_df['Date'] = pd.to_datetime(display_df['Date']).dt.strftime('%d/%m/%Y')
         st.dataframe(
-            display_df.iloc[::-1], # Reverse to show latest first
+            display_df.sort_values(by="Date", ascending=False), 
             use_container_width=True,
             column_config={"Date": st.column_config.TextColumn("Date")}
         )
     else:
-        st.write("No history available")
+        st.write("No history available for this range")
 
-# --- 7. SMART INSIGHTS ---
+# --- 8. SMART INSIGHTS ---
 st.divider()
-st.subheader("Monthly Insights")
-
-if not monthly_df.empty:
-    highest_cat = monthly_df.groupby("Category")["Amount"].sum().idxmax()
-    st.info(f"Analysis: You have spent the most on {highest_cat} this month. Keep an eye on this to stay within your INR {budget_limit:,.2f} limit.")
-else:
-    st.write("Add transactions to generate monthly insights")
+st.subheader("Range Insights")
+if not filtered_df.empty:
+    st.info(f"Between {date_range[0].strftime('%d/%m/%Y')} and {date_range[1].strftime('%d/%m/%Y') if len(date_range)>1 else ''}, you spent INR {filtered_total:,.2f}.")
